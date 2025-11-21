@@ -1,293 +1,134 @@
-# ❄️ Snowflake Intelligence Data Generator
+# ❄️ Snowflake Intelligence Demo Generator
 
-A powerful Streamlit application that generates tailored demo data infrastructure for Snowflake's Cortex Analyst and Cortex Search services. Create realistic, AI-powered demo environments in minutes with custom data that matches your customer's industry and use cases.
+Snowflake | Cortex Analyst | Cortex Search | Streamlit | Python
 
-## 🎯 What This App Does
+Build complete Snowflake Intelligence demos—structured data, unstructured content, semantic views, and Cortex Search services—in a few clicks. The Streamlit experience guides sellers, architects, and partners through collecting customer context, generating AI-crafted scenarios, and provisioning all required database objects automatically.
 
-The SI Data Generator creates complete demo environments that showcase Snowflake's AI capabilities:
+---
 
-- **🤖 AI-Generated Demo Ideas**: Uses Cortex LLM to create 3 tailored demo scenarios based on customer information
-- **📊 Realistic Structured Data**: Generates business-relevant tables with proper relationships and constraints
-- **🔍 Searchable Unstructured Data**: Creates text chunks optimized for semantic search
-- **🔗 Semantic Views**: Builds AI-ready views with relationships for Cortex Analyst
-- **🔎 Cortex Search Services**: Configures semantic search services for document retrieval
+## 🚦 Quick Facts
 
-## 🚀 Key Features
+| Category | Details |
+| --- | --- |
+| Primary audience | Snowflake Sales Engineers, Solutions Architects, Partners |
+| Core services | Cortex LLM, Cortex Analyst, Cortex Search, Streamlit |
+| Deployment modes | Standalone (Setup.sql) or Native App (`snowflake.yml`) |
+| Supported industries | Manufacturing, Automotive, Banking, Insurance, Securities, Asset Manager, Retail, CPG, Pharma, Healthcare, Generic |
+| Tech stack | Python, Streamlit, Snowflake Snowpark, Cortex APIs |
 
-### 🎨 **Intelligent Demo Generation**
-- **Customer-Specific**: Tailors demos based on company URL, team members, and use cases
-- **Industry-Aware**: Generates relevant scenarios for e-commerce, healthcare, financial services, etc.
-- **AI-Powered**: Uses Snowflake Cortex LLM to create realistic business contexts
+---
 
-### 📈 **Complete Data Infrastructure**
-- **Structured Tables**: 2 tables with PRIMARY KEY constraints and realistic business data
-- **Unstructured Content**: Searchable text chunks with metadata
-- **Joinable Architecture**: All tables connect via ENTITY_ID for comprehensive analytics
-- **Semantic Views**: AI-ready views with synonyms, relationships, and example queries
+## 📚 Table of Contents
 
-### 🔧 **Production-Ready Setup**
-- **Automated Schema Creation**: Creates organized database schemas
-- **Proper Constraints**: PRIMARY KEY constraints for optimal join performance
-- **Cortex Integration**: Ready-to-use Cortex Search services
-- **Comprehensive Documentation**: Generated demo guides and example queries
+1. [Why This App](#why-this-app)  
+2. [Architecture Overview](#architecture-overview)  
+3. [Setup Paths](#setup-paths)  
+4. [Guided Demo Flow](#guided-demo-flow)  
+5. [Generated Assets](#generated-assets)  
+6. [Reference Data Scenarios](#reference-data-scenarios)  
+7. [Operations & Troubleshooting](#operations--troubleshooting)  
+8. [Documentation & Support](#documentation--support)
 
-## 🏗️ Architecture
+---
+
+## Why This App
+
+- **Cortex-powered ideation** – Snowflake Cortex LLM composes three industry-specific scenarios using the customer’s URL, audience, use cases, and typical data sources.  
+- **Complete infrastructure** – Two structured tables (with primary keys and realistic joins), one unstructured content table, optional semantic view, and optional Cortex Search service are deployed together in a schema you choose.  
+- **Self-guided Streamlit UI** – Sellers can collect requirements, review AI-generated ideas, and create demo schemas without authoring SQL.  
+- **Documentation on autopilot** – The app emits a “demo story” that summarizes assets, business value, and example Cortex Analyst questions.
+
+---
+
+## Architecture Overview
 
 ```
 SI_DEMOS (Database)
 ├── APPLICATIONS (Schema)
-│   ├── SI_DATA_GENERATOR_REPO (Git Repository)
-│   └── SI_DATA_GENERATOR_APP (Streamlit App)
-└── [COMPANY]_DEMO_[DATE] (Generated Demo Schemas)
-    ├── TABLE_1 (Structured data with ENTITY_ID PK)
-    ├── TABLE_2 (Structured data with ENTITY_ID PK)
-    ├── CONTENT_CHUNKS (Unstructured searchable text)
-    ├── [COMPANY]_SEMANTIC_VIEW (AI-ready view)
-    └── [TABLE]_SEARCH_SERVICE (Cortex Search)
+│   ├── SI_DATA_GENERATOR_REPO         -- Git-integrated repo
+│   └── SI_DATA_GENERATOR_APP          -- Streamlit front-end
+└── [COMPANY]_DEMO_[DATE] (per-customer schemas)
+    ├── TABLE_1 / TABLE_2              -- Structured data with ENTITY_ID PK
+    ├── CONTENT_CHUNKS                 -- Unstructured searchable text
+    ├── [COMPANY]_SEMANTIC_VIEW        -- Cortex Analyst semantic layer
+    └── [TABLE]_SEARCH_SERVICE         -- Cortex Search service
 ```
-
-## 📋 Prerequisites
-
-- **Snowflake Account** with ACCOUNTADMIN privileges
-- **Cortex Access** enabled in your Snowflake account
-- **Streamlit** feature enabled
-- **Git Integration** capabilities
-
-## 🛠️ Quick Setup
-
-### 1. **Run the Setup Script**
-```sql
--- Execute the complete setup script
--- File: Setup.sql
--- This creates the entire environment including:
--- - Database and schemas
--- - Roles and permissions  
--- - Git integration
--- - Streamlit application
-```
-
-### 2. **Access the Application**
-- Navigate to **Data > Streamlit Apps** in Snowsight
-- Open `SI_DATA_GENERATOR_APP` from `SI_DEMOS.APPLICATIONS`
-- Start generating demos!
-
-## 🎮 How to Use
-
-### **Step 1: Customer Information**
-Enter:
-- **Company URL**: Customer's website (e.g., `https://acme.com`)
-- **Team Members**: Who you're presenting to (e.g., "CTO, Data Team")
-- **Use Cases**: Specific requirements (optional)
-- **Industry Segment**: Pick one of Manufacturing, Automobile, Banking, Insurance, Securities, Asset Manager, Retail, CPG, Pharma, Healthcare, or Generic
-- **Typical Datasets / Sources**: Optional notes about systems/files (e.g., ERP extracts, CRM leads, IoT sensors, knowledge bases)
-- **Record Count**: Number of sample records per table
-
-### **Step 2: AI Demo Generation**
-- Click **"Generate Demo Ideas"**
-- App uses Cortex LLM to create 3 tailored scenarios
-- Each demo includes:
-  - Compelling title and description
-  - Industry focus and business value
-  - 2 structured tables + 1 unstructured table
-  - Purpose and use case explanations
-
-### **Step 3: Demo Selection**
-- Review the 3 AI-generated demo ideas
-- Each shows:
-  - **Structured Table 1**: Primary business data
-  - **Structured Table 2**: Supporting/related data  
-  - **Unstructured Table**: Searchable content
-- Select the best fit for your customer
-
-### **Step 4: Infrastructure Creation**
-- Choose schema name (auto-generated)
-- Enable optional features:
-  - **Semantic View**: AI-ready analytics view
-  - **Cortex Search Service**: Semantic search capability
-- Click **"Create Demo Infrastructure"**
-
-### **Step 5: Demo Ready!**
-The app creates:
-- ✅ **Database Schema** with organized structure
-- ✅ **Structured Tables** with realistic data and PRIMARY KEY constraints
-- ✅ **Unstructured Table** with searchable text chunks
-- ✅ **Semantic View** with relationships and example queries
-- ✅ **Cortex Search Service** for document retrieval
-- ✅ **Complete Documentation** with demo flow and example questions
-
-## 🎯 Example Demo Scenarios
-
-### **E-commerce Analytics**
-- **Tables**: Sales transactions, customer profiles
-- **Search**: Product reviews and feedback
-- **Queries**: "What are our top-performing customer segments by revenue?"
-
-### **Financial Services**
-- **Tables**: Transaction monitoring, compliance events  
-- **Search**: Regulatory documents and policies
-- **Queries**: "Show me high-risk transactions and their compliance status"
-
-### **Healthcare Analytics**
-- **Tables**: Patient outcomes, treatment protocols
-- **Search**: Clinical notes and research documentation
-- **Queries**: "Which treatment protocols have the best patient outcomes?"
-
-### **Manufacturing Operations**
-- **Tables**: Production line metrics, supplier performance
-- **Search**: Quality reports, maintenance logs, operator shift notes
-- **Queries**: "Where are the biggest drivers of downtime across lines and suppliers?"
-
-## 🔍 Demo Flow Example
-
-### **1. Structured Analytics (Cortex Analyst)**
-```
-Question: "What are the top 5 performing entities and their key metrics?"
-→ Cortex Analyst queries structured tables
-→ Joins data using ENTITY_ID relationships
-→ Returns analytical insights with visualizations
-```
-
-### **2. AI Reasoning Follow-up**
-```
-Question: "What could be the reasons for these performance differences?"
-→ Agent uses AI reasoning (not data querying)
-→ Provides business insights and hypotheses
-→ Suggests potential factors and correlations
-```
-
-### **3. Knowledge Retrieval (Cortex Search)**
-```
-Question: "Find relevant best practices for improving these metrics"
-→ Cortex Search queries unstructured content
-→ Returns contextual information from text data
-→ Combines with previous analysis for complete insights
-```
-
-## 📊 Generated Data Features
-
-### **Structured Tables**
-- **Realistic Business Data**: Industry-relevant columns and values
-- **PRIMARY KEY Constraints**: ENTITY_ID for optimal joins
-- **70% Data Overlap**: Meaningful relationships between tables
-- **Proper Data Types**: NUMBER, STRING, DATE, TIMESTAMP, BOOLEAN
-- **Business Context**: Relevant to customer's industry
-
-### **Unstructured Content**
-- **Chunked Text**: Optimized for semantic search
-- **Rich Metadata**: Document types, sources, timestamps
-- **Searchable Attributes**: CHUNK_ID, DOCUMENT_ID, DOCUMENT_TYPE
-- **Realistic Content**: Business-relevant text samples
-
-### **Semantic Views**
-- **AI-Ready Relationships**: Properly defined joins
-- **Business Synonyms**: Multiple ways to reference data
-- **Example Queries**: Pre-built questions for demos
-- **Cortex Analyst Extension**: Enhanced AI capabilities
-
-## 🔧 Customization Options
-
-### **Demo Templates**
-Modify fallback demo ideas in the application:
-```python
-def get_fallback_demo_ideas(company_name, team_members, use_cases):
-    # Add your custom industry templates
-    # Healthcare, Finance, Retail, Manufacturing, etc.
-```
-
-### **Data Generation**
-- **Record Counts**: 20 to 10,000 records per table
-- **Industry Focus**: Automatic detection from company URL
-- **Use Case Tailoring**: Custom scenarios based on requirements
-
-### **Compute Resources**
-```sql
--- Scale warehouse based on usage
-ALTER WAREHOUSE SI_DEMO_WH SET WAREHOUSE_SIZE = 'X-SMALL';
-```
-
-## 📈 Business Value
-
-### **For Sales Teams**
-- **Rapid Demo Setup**: Create tailored demos in minutes
-- **Customer-Specific**: Relevant to prospect's industry
-- **Complete Infrastructure**: Ready-to-use AI capabilities
-- **Professional Presentation**: Polished, realistic data
-
-### **For Technical Teams**
-- **Best Practices**: Proper constraints and relationships
-- **AI Integration**: Cortex Analyst and Search examples
-- **Scalable Architecture**: Easy to extend and modify
-- **Documentation**: Complete setup and usage guides
-
-### **For Customers**
-- **Real-World Scenarios**: Relevant to their business
-- **AI Capabilities**: See both analytics and search in action
-- **Immediate Value**: Understand capabilities through familiar data
-- **Future-Ready**: Architecture supports growth and expansion
-
-## 🧹 Cleanup & Management
-
-### **Remove Demo Data**
-```sql
--- List all demo schemas
-SHOW SCHEMAS IN DATABASE SI_DEMOS LIKE '%_DEMO_%';
-
--- Remove specific demo
-DROP SCHEMA IF EXISTS SI_DEMOS.ACME_DEMO_20250115;
-```
-
-### **Monitor Usage**
-- **Compute Costs**: Monitor warehouse usage
-- **Storage**: Track table sizes in demo schemas
-- **Cortex**: Review AI function call costs
-
-## 🆘 Troubleshooting
-
-### **Common Issues**
-
-**"Insufficient privileges" Error**
-```sql
-USE ROLE ACCOUNTADMIN;
--- Re-run setup script
-```
-
-**"Cortex function not accessible" Error**
-```sql
-GRANT USAGE ON FUNCTION SNOWFLAKE.CORTEX.COMPLETE(STRING, STRING) 
-TO ROLE ACCOUNTADMIN;
-```
-
-**"Streamlit app not loading"**
-- Verify git repository is synced
-- Check file path in app definition
-- Ensure all permissions are granted
-
-## 📚 Documentation
-
-- **`NATIVE_APP_PROVIDER_GUIDE.md`**: Complete guide for Native App providers (installation, testing, releases)
-- **`Setup.sql`**: Automated environment creation for standalone deployment
-- **Generated Demo Guides**: Custom documentation for each demo
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🎉 Success Stories
-
-> *"This tool has revolutionized our demo process. We can now create customer-specific demos in minutes instead of hours, and the AI-generated scenarios are incredibly realistic and relevant."* - Sales Engineering Team
-
-> *"The semantic views and Cortex Search integration make it easy to showcase the full power of Snowflake's AI capabilities. Our customers immediately understand the value."* - Solutions Architect
 
 ---
 
-**Ready to create amazing Snowflake demos?** 🚀
+## Setup Paths
 
-[Native App Provider Guide](NATIVE_APP_PROVIDER_GUIDE.md) | [Standalone Setup Script](Setup.sql) | [Report Issues](https://github.com/kfir-liron-snowflake/SI_Data_Generator/issues)
+### Option A – Standalone Snowflake objects
+1. Run `Setup.sql` as `ACCOUNTADMIN`.  
+2. This creates `SI_DEMOS`, the `APPLICATIONS` schema, warehouses, Git integration, and the Streamlit app pointing at `native_app/Dashboard.py`.  
+3. Open Snowsight ➜ **Data > Streamlit** ➜ launch `SI_DATA_GENERATOR_APP`.
+
+### Option B – Native App packaging
+1. Install [Snow CLI](https://docs.snowflake.com/en/developer-guide/snowflake-cli).  
+2. From the repo root, run `snow app deploy` followed by `snow app run`.  
+3. Customize references via `snowflake.yml` (warehouse references, privileges) and distribute through the Snowflake Native Apps framework.  
+4. Documentation for providers lives in `NATIVE_APP_PROVIDER_GUIDE.md`.
+
+**Prerequisites**
+- Snowflake account with Cortex enabled and Streamlit feature turned on.  
+- Warehouse usage rights for the app (grant via `GRANT USAGE, OPERATE ON WAREHOUSE ... TO APPLICATION ...`).  
+- Git integration if deploying via Setup.sql.
+
+---
+
+## Guided Demo Flow
+
+1. **Customer Brief** – Provide company URL, audience, use cases, industry segment, typical datasets, and desired record count.  
+2. **AI Scenario Generation** – Click “Generate Demo Ideas.” Cortex returns three fully described scenarios with structured/unstructured table definitions, business value, and search intents.  
+3. **Review & Select** – Each scenario is shown in a tab with industry focus, value proposition, and table breakdowns (Structured 1, Structured 2, Unstructured).  
+4. **Provision** – Choose or override the schema name, toggle semantic view and/or Cortex Search service, and click “Create Demo Infrastructure.”  
+5. **Demo Story** – The app posts a Markdown report summarizing objects, record counts, example Cortex Analyst questions, and Cortex Search queries.
+
+---
+
+## Generated Assets
+
+| Asset | Description |
+| --- | --- |
+| Structured tables (2) | ENTITY_ID primary key, realistic measures/dimensions, ~70% overlapping IDs for meaningful joins. |
+| Unstructured table | `CONTENT_CHUNKS` with chunk text, metadata, timestamps, ready for Cortex Search. |
+| Semantic view (optional) | Declares relationships, facts, dimensions, synonyms, and Cortex Analyst extension metadata. |
+| Cortex Search service (optional) | Points to the chunk table for natural-language lookup. |
+| Demo documentation | Generated Markdown “story” summarizing the environment and recommended Cortex Analyst/ Search questions. |
+
+---
+
+## Reference Data Scenarios
+
+- **E-commerce / Retail** – Sales transactions + customer profiles + product review corpus.  
+- **Financial Services** – Transaction monitoring + compliance event tables + regulatory policy text.  
+- **Healthcare / Pharma** – Patient outcomes + treatment protocols + clinical notes.  
+- **Manufacturing / CPG** – Production line metrics + supplier performance + maintenance/quality logs.  
+- **Generic** – If no segment is selected, robust fallback templates keep the workflow usable offline.
+
+You can customize fallback templates in `Dashboard.py` by editing `get_fallback_demo_ideas`.
+
+---
+
+## Operations & Troubleshooting
+
+| Scenario | Resolution |
+| --- | --- |
+| Streamlit app missing | Re-run `Setup.sql` or redeploy the Native App package; ensure the Git repo is accessible. |
+| Cortex privileges missing | Grant imported privileges via `snowflake.permissions` prompt or run `USE ROLE ACCOUNTADMIN; GRANT ...`. |
+| Warehouse not found | The app asks for a `consumer_warehouse` reference; grant USAGE/OPERATE on the desired warehouse to the app. |
+| Cleanup | Drop the per-customer schema: `DROP SCHEMA IF EXISTS SI_DEMOS.[COMPANY]_DEMO_[DATE];`. |
+| Cost monitoring | Track warehouse auto-resume, table sizes, and Cortex usage via standard Snowflake views. |
+
+---
+
+## Documentation & Support
+
+- `NATIVE_APP_PROVIDER_GUIDE.md` – installation, testing, release guidance for the Native App channel.  
+- `Setup.sql` – one-stop SQL script that provisions everything for the standalone deployment.  
+- [Snowflake Cortex Documentation](https://docs.snowflake.com/en/user-guide/snowflake-cortex) – detailed reference for Analyst, Search, and Agents.  
+- Questions or issues? Open an issue in this repository or contact your Snowflake Technical Account Manager.
+
+---
+
+Ready to create stunning Snowflake Intelligence demos? **Clone the repo, deploy the app, and impress your customers.** 🚀
