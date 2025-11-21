@@ -78,6 +78,8 @@ Enter:
 - **Company URL**: Customer's website (e.g., `https://acme.com`)
 - **Team Members**: Who you're presenting to (e.g., "CTO, Data Team")
 - **Use Cases**: Specific requirements (optional)
+- **Industry Segment**: Pick one of Manufacturing, Automobile, Banking, Insurance, Securities, Asset Manager, Retail, CPG, Pharma, Healthcare, or Generic
+- **Typical Datasets / Sources**: Optional notes about systems/files (e.g., ERP extracts, CRM leads, IoT sensors, knowledge bases)
 - **Record Count**: Number of sample records per table
 
 ### **Step 2: AI Demo Generation**
@@ -129,6 +131,11 @@ The app creates:
 - **Tables**: Patient outcomes, treatment protocols
 - **Search**: Clinical notes and research documentation
 - **Queries**: "Which treatment protocols have the best patient outcomes?"
+
+### **Manufacturing Operations**
+- **Tables**: Production line metrics, supplier performance
+- **Search**: Quality reports, maintenance logs, operator shift notes
+- **Queries**: "Where are the biggest drivers of downtime across lines and suppliers?"
 
 ## 🔍 Demo Flow Example
 

@@ -8,6 +8,63 @@ from datetime import datetime, timedelta
 import json
 import re
 
+
+SEGMENT_CHOICES = [
+    "manufacturing",
+    "automobile",
+    "banking",
+    "insurance",
+    "securities",
+    "assetmanager",
+    "retail",
+    "cpg",
+    "pharma",
+    "healthcare",
+    "generic"
+]
+
+SEGMENT_LABELS = {
+    "manufacturing": "Manufacturing",
+    "automobile": "Automobile",
+    "banking": "Banking",
+    "insurance": "Insurance",
+    "securities": "Securities",
+    "assetmanager": "Asset Manager",
+    "retail": "Retail",
+    "cpg": "Consumer Packaged Goods",
+    "pharma": "Pharmaceuticals",
+    "healthcare": "Healthcare",
+    "generic": "Generic"
+}
+
+SEGMENT_CLUSTER_MAP = {
+    "manufacturing": "manufacturing",
+    "automobile": "manufacturing",
+    "banking": "finance",
+    "insurance": "finance",
+    "securities": "finance",
+    "assetmanager": "finance",
+    "retail": "retail",
+    "cpg": "retail",
+    "pharma": "healthcare",
+    "healthcare": "healthcare",
+    "generic": "generic"
+}
+
+SEGMENT_PRIORITY_MAP = {
+    "retail": ["retail", "manufacturing", "finance", "healthcare"],
+    "finance": ["finance", "retail", "healthcare", "manufacturing"],
+    "healthcare": ["healthcare", "finance", "retail", "manufacturing"],
+    "manufacturing": ["manufacturing", "retail", "finance", "healthcare"],
+    "generic": ["retail", "finance", "healthcare", "manufacturing"]
+}
+
+SEGMENT_DEFAULT = "generic"
+
+
+def get_segment_label(segment_value):
+    return SEGMENT_LABELS.get(segment_value, segment_value.replace('_', ' ').title())
+
 # Initialize Snowflake session
 session = get_active_session()
 
@@ -18,9 +75,8 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("❄️ Snowflake Agent Demo Data Generator")
-st.markdown("Generate tailored demo data infrastructure for Cortex Analyst and Cortex Search services")
 warehouse_name = session.get_current_warehouse()
+current_role = session.get_current_role()
 
 try:
     #If running in Native App context, make sure we have the necessary permissions
@@ -45,12 +101,43 @@ try:
         permissions.request_reference(WAREHOUSE_REFERENCE_NAME)
         st.stop()
 
-    # Get the granted warehouse name
-    warehouse_name = warehouse_reference[0]['name']
+    # Use the granted warehouse alias so it resolves inside the native app
+    warehouse_entry = warehouse_reference[0]
+    warehouse_alias = warehouse_entry.get('reference_name') or warehouse_entry.get('name')
+    warehouse_name = warehouse_alias
 
 except Exception:
     # Running outside of Native App context
     pass
+
+st.sidebar.title("📚 Helpful References")
+st.sidebar.markdown(
+    """
+- [Cortex Analyst Docs](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-analyst)
+- [Cortex Search Docs](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-search)
+- [Cortex Agents Docs](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents)
+- [Snowflake Intelligence Overview](https://docs.snowflake.com/en/user-guide/snowflake-cortex)
+"""
+)
+
+st.image(
+    "https://www.google.com/url?sa=i&url=https%3A%2F%2Fwww.linkedin.com%2Fpulse%2Fsnowflake-company-everyone-should-talking-its-ipo-chhabria-he-him-&psig=AOvVaw2vbIcMUic9pbA9N4MdvdC4&ust=1763833674400000&source=images&cd=vfe&opi=89978449&ved=0CBUQjRxqFwoTCPDwhdHmg5EDFQAAAAAdAAAAABAE",
+    caption="Snowflake Intelligence Demo Builder",
+    use_column_width=True,
+)
+
+with st.container():
+    st.title("❄️ Snowflake Intelligence Demo Builder")
+    st.markdown(
+        """
+**Build AI-ready demo environments in a few clicks**
+- 🤖 Cortex-crafted scenarios tailored to your industry segment and datasets
+- 📊 Structured + unstructured data that mirrors real customer systems
+- 🔗 Automatically configured semantic view and Cortex Search service for natural language analysis
+"""
+    )
+    st.caption("Follow the guided steps below—each section explains what’s happening and why it matters.")
+    st.divider()
 
 # Initialize session state
 if 'demo_ideas' not in st.session_state:
@@ -71,9 +158,10 @@ def clean_company_name(url):
     # Capitalize first letter
     return domain.capitalize()
 
-def generate_demo_ideas_with_llm(company_url, team_members, use_cases):
+def generate_demo_ideas_with_llm(company_url, team_members, use_cases, segment, datasets):
     """Generate 3 demo ideas using Snowflake Cortex LLM"""
     company_name = clean_company_name(company_url)
+    segment_label = get_segment_label(segment)
     
     # Clean URL for LLM prompt (remove trailing slash)
     clean_url = company_url.rstrip('/')
@@ -86,6 +174,8 @@ Customer Information:
 - Company: {company_name} ({clean_url})
 - Team/Audience: {team_members}
 - Use Cases: {use_cases if use_cases else "Not specified"}
+- Industry Segment: {segment_label}
+- Typical Datasets/Sources: {datasets if datasets else "Not specified"}
 
 For each demo, provide:
 1. A compelling title and description
@@ -93,7 +183,8 @@ For each demo, provide:
 3. One unstructured data table (for Cortex Search) with chunked text data
 
 Requirements:
-- Make demos relevant to the company's likely industry/domain
+- Make demos relevant to the company's likely industry/domain and the selected segment ({segment_label})
+- Incorporate or reference the provided datasets/sources ({datasets if datasets else "none specified"}) when naming tables and describing data
 - Consider the audience when designing complexity
 - Focus on business value and real-world scenarios
 - Ensure table names are SQL-friendly (uppercase, underscores)
@@ -150,21 +241,25 @@ Return ONLY a JSON object with this exact structure:
                 demo['target_audience'] = f"Designed for presentation to: {team_members}"
                 if use_cases:
                     demo['customization'] = f"Tailored for: {use_cases}"
+                demo['selected_segment'] = segment_label
+                if datasets:
+                    demo['data_sources'] = f"Typical data sources: {datasets}"
             
             return demo_data['demos']
             
         except json.JSONDecodeError:
             st.warning("⚠️ LLM response wasn't valid JSON. Using fallback demo ideas.")
-            return get_fallback_demo_ideas(company_name, team_members, use_cases)
+            return get_fallback_demo_ideas(company_name, team_members, use_cases, segment, datasets)
             
     except Exception as e:
         st.warning(f"⚠️ Error calling Cortex LLM: {str(e)}. Using fallback demo ideas.")
-        return get_fallback_demo_ideas(company_name, team_members, use_cases)
+        return get_fallback_demo_ideas(company_name, team_members, use_cases, segment, datasets)
 
-def get_fallback_demo_ideas(company_name, team_members, use_cases):
+def get_fallback_demo_ideas(company_name, team_members, use_cases, segment, datasets):
     """Fallback demo ideas if LLM fails"""
     demo_templates = [
         {
+            "segment_key": "retail",
             "title": "E-commerce Analytics & Customer Intelligence",
             "description": f"Comprehensive e-commerce analytics solution for {company_name}",
             "industry_focus": "E-commerce/Retail",
@@ -188,6 +283,7 @@ def get_fallback_demo_ideas(company_name, team_members, use_cases):
             }
         },
         {
+            "segment_key": "finance",
             "title": "Financial Services Risk & Compliance",
             "description": f"Risk management and compliance monitoring system for {company_name}",
             "industry_focus": "Financial Services",
@@ -211,6 +307,7 @@ def get_fallback_demo_ideas(company_name, team_members, use_cases):
             }
         },
         {
+            "segment_key": "healthcare",
             "title": "Healthcare Patient Analytics & Research",
             "description": f"Patient outcomes and research data platform for {company_name}",
             "industry_focus": "Healthcare",
@@ -232,6 +329,30 @@ def get_fallback_demo_ideas(company_name, team_members, use_cases):
                     "purpose": "Enable Cortex Search for clinical knowledge retrieval"
                 }
             }
+        },
+        {
+            "segment_key": "manufacturing",
+            "title": "Manufacturing Operations & Supply Chain Intelligence",
+            "description": f"Factory performance and supplier collaboration hub for {company_name}",
+            "industry_focus": "Manufacturing",
+            "business_value": "Increase throughput, lower downtime, and optimize supplier delivery",
+            "tables": {
+                "structured_1": {
+                    "name": "PRODUCTION_LINE_METRICS",
+                    "description": "Station-level OEE metrics, downtime reasons, and throughput readings",
+                    "purpose": "Let Cortex Analyst surface efficiency trends and bottlenecks across production lines"
+                },
+                "structured_2": {
+                    "name": "SUPPLIER_PERFORMANCE",
+                    "description": "Inbound delivery SLAs, quality checks, and compliance status by supplier",
+                    "purpose": "Correlate supply variability with plant KPIs to highlight high-risk vendors"
+                },
+                "unstructured": {
+                    "name": "QUALITY_REPORTS_CHUNKS",
+                    "description": "Chunked quality audits, maintenance logs, and operator shift notes",
+                    "purpose": "Use Cortex Search to retrieve tribal knowledge that explains anomalies"
+                }
+            }
         }
     ]
     
@@ -241,8 +362,20 @@ def get_fallback_demo_ideas(company_name, team_members, use_cases):
             demo["target_audience"] = f"Designed for presentation to: {team_members}"
         if use_cases:
             demo["customization"] = f"Tailored for: {use_cases}"
+        demo["selected_segment"] = get_segment_label(segment)
+        if datasets:
+            demo["data_sources"] = f"Typical data sources: {datasets}"
     
-    return demo_templates
+    cluster = SEGMENT_CLUSTER_MAP.get(segment, "generic")
+    priority_order = SEGMENT_PRIORITY_MAP.get(cluster, SEGMENT_PRIORITY_MAP["generic"])
+    
+    def priority_value(demo):
+        key = demo.get("segment_key")
+        return priority_order.index(key) if key in priority_order else len(priority_order)
+    
+    ordered_templates = sorted(demo_templates, key=priority_value)
+    
+    return ordered_templates[:3]
 
 def generate_realistic_content_with_llm(table_info, num_records, company_name, is_structured_table=True, join_key_values=None):
     """Generate realistic table schema and content using LLM"""
@@ -434,25 +567,37 @@ def create_cortex_search_service(schema_name, table_name, search_column="CHUNK_T
         service_name = f"{table_name}_SEARCH_SERVICE"
         full_table_name = f"{schema_name}.{table_name}"
         
-        # Create the search service
-        create_service_sql = f"""
-        CREATE OR REPLACE CORTEX SEARCH SERVICE {schema_name}.{service_name}
-        ON {search_column}
-        ATTRIBUTES CHUNK_ID, DOCUMENT_ID, DOCUMENT_TYPE, SOURCE_SYSTEM
-        WAREHOUSE = compute_wh
-        TARGET_LAG = '1 minute'
-        AS (
-            SELECT 
-                CHUNK_ID,
-                DOCUMENT_ID, 
-                DOCUMENT_TYPE,
-                SOURCE_SYSTEM,
-                {search_column}
-            FROM {full_table_name}
-        );
-        """
-        
-        session.sql(create_service_sql, params=[warehouse_name]).collect()
+        def run_create(target_wh):
+            create_service_sql = f"""
+            CREATE OR REPLACE CORTEX SEARCH SERVICE {schema_name}.{service_name}
+            ON {search_column}
+            ATTRIBUTES CHUNK_ID, DOCUMENT_ID, DOCUMENT_TYPE, SOURCE_SYSTEM
+            WAREHOUSE = "{target_wh}"
+            TARGET_LAG = '1 minute'
+            AS (
+                SELECT 
+                    CHUNK_ID,
+                    DOCUMENT_ID, 
+                    DOCUMENT_TYPE,
+                    SOURCE_SYSTEM,
+                    {search_column}
+                FROM {full_table_name}
+            );
+            """
+            session.sql(create_service_sql).collect()
+
+        target_warehouse = warehouse_name or "COMPUTE_WH"
+        try:
+            run_create(target_warehouse)
+        except Exception as exc:
+            error_text = str(exc)
+            if target_warehouse.upper() != "COMPUTE_WH" and "does not exist" in error_text and "WAREHOUSE" in error_text.upper():
+                fallback_wh = "COMPUTE_WH"
+                st.warning(f"Warehouse '{target_warehouse}' unavailable. Falling back to '{fallback_wh}'.")
+                run_create(fallback_wh)
+            else:
+                raise
+
         st.success(f"✅ Cortex Search Service '{service_name}' created successfully")
         
         return service_name
@@ -460,6 +605,7 @@ def create_cortex_search_service(schema_name, table_name, search_column="CHUNK_T
     except Exception as e:
         st.error(f"❌ Error creating Cortex Search service: {str(e)}")
         return None
+
 
 def create_semantic_view(schema_name, table1_info, table2_info, demo_data, company_name):
     """Create comprehensive semantic view with facts, dimensions, synonyms, and CA extension"""
@@ -1378,6 +1524,7 @@ def create_tables_in_snowflake(schema_name, demo_data, num_records, company_name
         results = []
         structured_tables_data = {}
         unstructured_table_info = None
+        # track outputs for optional pieces
         
         # Generate unique ENTITY_ID values for each table with controlled overlap
         # Create a base pool of unique IDs
@@ -1397,7 +1544,6 @@ def create_tables_in_snowflake(schema_name, demo_data, num_records, company_name
             'structured_2': table2_entity_ids
         }
         
-        st.write(demo_data['tables'])
         for table_key, table_info in demo_data['tables'].items():
             table_name = table_info['name']
             full_table_name = f"{schema_name}.{table_name}"
@@ -1478,6 +1624,7 @@ def create_tables_in_snowflake(schema_name, demo_data, num_records, company_name
             search_service = create_cortex_search_service(schema_name, table_name)
             
             if search_service:
+                search_service_name = search_service
                 results.append({
                     'table': search_service,
                     'records': 'Service',
@@ -1485,7 +1632,7 @@ def create_tables_in_snowflake(schema_name, demo_data, num_records, company_name
                     'columns': ['Search service for semantic text search'],
                     'type': 'search_service'
                 })
-        
+
         return results
         
     except Exception as e:
@@ -1554,6 +1701,9 @@ def generate_data_story(company_name, demo_data, table_results):
 2. "What are common challenges in {industry_focus.lower()} operations?"  
 3. "Search for recommendations about performance improvements"
 
+"""
+    story += """\
+
 ## 🚀 Step-by-Step Agent Demo Flow
 
 ### Step 1: Structured Data Analysis (Join Query)
@@ -1581,9 +1731,9 @@ Your {company_name} demo environment is configured and ready to showcase the ful
     return story
 
 # Main UI
+st.markdown("## Step 1 · Customer Brief")
+st.caption("Give us the context we’ll pass to Cortex so the generated data feels like it belongs to your customer.")
 with st.container():
-    st.header("🎯 Customer Information")
-    
     col1, col2 = st.columns(2)
     
     with col1:
@@ -1614,12 +1764,27 @@ with st.container():
             step=100,
             help="How many sample records to generate for each table"
         )
+    
+    segment = st.selectbox(
+        "Industry Segment *",
+        SEGMENT_CHOICES,
+        index=SEGMENT_CHOICES.index(SEGMENT_DEFAULT),
+        format_func=lambda value: SEGMENT_LABELS.get(value, value.title()),
+        key="industry_segment_choice"
+    )
+
+    typical_sources = st.text_area(
+        "Typical Datasets / Sources (Optional)",
+        placeholder="E.g., ERP extracts, CRM leads, IoT sensors, policy docs, knowledge base PDFs",
+        help="List any internal systems, file types, or content repositories you want the demo data to mimic."
+    )
+    st.info("Tip: Mention both transactional systems and document repositories for richer AI output.")
 
 # Generate Ideas Button
-if st.button("🎨 Generate Demo Ideas", type="primary", disabled=not (company_url and team_members)):
+if st.button("🎨 Generate Demo Ideas", type="primary", disabled=not (company_url and team_members and segment)):
     if company_url and team_members:
         with st.spinner("🤖 Using Cortex LLM to generate tailored demo ideas..."):
-            st.session_state.demo_ideas = generate_demo_ideas_with_llm(company_url, team_members, use_cases)
+            st.session_state.demo_ideas = generate_demo_ideas_with_llm(company_url, team_members, use_cases, segment, typical_sources)
         st.success("✨ AI-generated demo ideas ready! Choose one below.")
         if hasattr(st, 'rerun'):
             st.rerun()
@@ -1627,8 +1792,13 @@ if st.button("🎨 Generate Demo Ideas", type="primary", disabled=not (company_u
             st.experimental_rerun()
 
 # Display Demo Ideas
+st.markdown("## Step 2 · Review AI Demo Ideas")
+if not st.session_state.demo_ideas:
+    st.caption("Click **Generate Demo Ideas** to let Cortex craft scenarios tailored to your inputs.")
+
 if st.session_state.demo_ideas:
-    st.header("💡 Demo Ideas")
+    st.success("Review the scenarios below and select the one that best matches your conversation.")
+    st.subheader("💡 Suggested Scenarios")
     
     # Create tabs for each demo idea
     tabs = st.tabs([f"Demo {i+1}: {demo['title'].split(':')[0]}" for i, demo in enumerate(st.session_state.demo_ideas)])
@@ -1649,6 +1819,9 @@ if st.session_state.demo_ideas:
             
             if 'customization' in demo:
                 st.info(f"🎯 {demo['customization']}")
+            
+            if 'data_sources' in demo:
+                st.info(f"🗂️ {demo['data_sources']}")
             
             st.write("**📊 Data Tables:**")
             
@@ -1684,7 +1857,16 @@ if st.session_state.demo_ideas:
 
 # Schema Creation and Data Generation
 if st.session_state.selected_demo:
-    st.header("🏗️ Create Demo Infrastructure")
+    st.markdown("## Step 3 · Provision Demo Environment")
+    st.caption("Everything will be created inside the schema you choose. Drop the schema later to remove the demo.")
+    st.markdown(
+        """
+**Provisioning checklist**
+- Your role has CREATE/USAGE on the target schema and warehouse
+- Warehouse sizing matches the requested record volume
+- Optional features (semantic view, Cortex Search) are toggled appropriately
+"""
+    )
     
     company_name = clean_company_name(company_url)
     # Replace hyphens with underscores for schema and object names
@@ -1725,7 +1907,7 @@ if st.session_state.selected_demo:
         )
         if enable_search_service:
             st.caption("✨ Enables semantic search on text content")
-    
+
     # Create Infrastructure Button
     if st.button("🛠️ Create Demo Infrastructure", type="primary"):
         if schema_name:

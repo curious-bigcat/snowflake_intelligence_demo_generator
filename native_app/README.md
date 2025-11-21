@@ -37,6 +37,8 @@ Enter details about your customer:
 - **Company URL**: The customer's website (used for context)
 - **Team Members**: Key stakeholders who will see the demo
 - **Use Cases**: Specific business scenarios they want to explore
+- **Industry Segment**: Choose from Manufacturing, Automobile, Banking, Insurance, Securities, Asset Manager, Retail, CPG, Pharma, Healthcare, or Generic
+- **Typical Datasets / Sources**: Optional list of systems, files, or repositories you want the generated assets to emulate
 
 ### Step 2: AI Demo Generation
 The app uses Snowflake Cortex LLM to generate 3 tailored demo scenarios based on your input, such as:
@@ -53,6 +55,7 @@ The app automatically creates:
 - **1 Unstructured Table**: Searchable text chunks for semantic search demos
 - **1 Semantic View**: Connects all data with AI-ready relationships
 - **1 Cortex Search Service**: Ready-to-use semantic search functionality
+- **1 Cortex Agent (optional)**: Multi-tool agent wired to the semantic view and Cortex Search service
 
 ## Generated Demo Structure
 
@@ -87,6 +90,12 @@ CUSTOMER_DEMO_YYYYMMDD/
 - **Regulatory Documents**: Compliance reports and policies
 - **Semantic View**: Risk assessment and regulatory reporting
 
+### Manufacturing Demo
+- **Production Line Metrics**: OEE, downtime events, throughput
+- **Supplier Performance**: Delivery SLAs, quality inspections, compliance
+- **Quality Reports**: Maintenance logs, shift notes, audit findings
+- **Semantic View**: Connect supply variability with factory KPIs
+
 ## Working with Generated Data
 
 ### Cortex Analyst Integration
@@ -97,7 +106,7 @@ SELECT * FROM [CUSTOMER]_SEMANTIC_VIEW
 WHERE [relevant_conditions];
 ```
 
-### Cortex Search Usage
+- **Cortex Search Usage**
 Use the generated search service for semantic document retrieval:
 ```sql
 -- Example search query
@@ -108,6 +117,17 @@ SELECT * FROM TABLE(
   )
 );
 ```
+
+### Cortex Agent Option
+- Enabling *Create Cortex Agent* provisions an agent object in the same schema, wired to the generated semantic view and Cortex Search index.
+- Agents run with the caller’s default role and default warehouse. Ensure anyone using the agent has those defaults set and has `USAGE` on the agent.
+- Grant access to additional roles with:
+
+```sql
+GRANT USAGE ON AGENT <database_name>.<schema_name>.<agent_name> TO ROLE <role_name>;
+```
+
+- You can manage and test the agent from Snowsight (AI & ML » Agents) or via the Cortex Agents REST API / SQL endpoints.
 
 ## Data Management
 
