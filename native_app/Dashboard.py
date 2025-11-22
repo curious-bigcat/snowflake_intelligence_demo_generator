@@ -62,6 +62,105 @@ SEGMENT_PRIORITY_MAP = {
 SEGMENT_DEFAULT = "generic"
 
 
+def normalize_table_name(raw_name, default_prefix, index):
+    """Convert table names to uppercase snake case with a stable fallback."""
+    if not raw_name:
+        raw_name = f"{default_prefix}_{index + 1}"
+    cleaned = re.sub(r'[^A-Za-z0-9_]', '_', raw_name.upper())
+    cleaned = re.sub(r'_+', '_', cleaned).strip('_')
+    return cleaned or f"{default_prefix}_{index + 1}"
+
+
+def normalize_table_entry(entry, prefix, index, source_hint=None, data_focus=None):
+    """Ensure each table definition has required attributes and metadata."""
+    if entry is None or not isinstance(entry, dict):
+        entry = {}
+    normalized = {
+        'name': normalize_table_name(entry.get('name'), prefix, index),
+        'description': entry.get('description') or f"{prefix.replace('_', ' ').title()} description",
+        'purpose': entry.get('purpose') or "Supports the Snowflake Intelligence walkthrough."
+    }
+    hint = entry.get('source_hint') or source_hint
+    if hint:
+        normalized['source_hint'] = hint
+    focus = entry.get('data_focus') or data_focus
+    if focus:
+        normalized['data_focus'] = focus
+    return normalized
+
+
+def apply_table_preferences_to_demo(
+    demo,
+    structured_target,
+    unstructured_target,
+    structured_sources=None,
+    unstructured_sources=None,
+    table_data_notes=None
+):
+    """Harmonize table definitions with user preferences and defaults."""
+    tables_block = demo.get('tables', {}) or {}
+
+    structured_entries = []
+    unstructured_entries = []
+
+    # Modern schema (lists)
+    if isinstance(tables_block.get('structured'), list):
+        structured_entries.extend(tables_block.get('structured'))
+    elif isinstance(tables_block, list):
+        structured_entries.extend(tables_block)
+    # Legacy schema (structured_1, structured_2, etc.)
+    legacy_structured_keys = sorted(
+        [k for k in tables_block.keys() if k.startswith('structured_')]
+    )
+    if legacy_structured_keys and not structured_entries:
+        for key in legacy_structured_keys:
+            value = tables_block.get(key)
+            if isinstance(value, dict):
+                structured_entries.append(value)
+
+    # Unstructured handling
+    unstructured_block = tables_block.get('unstructured')
+    if isinstance(unstructured_block, list):
+        unstructured_entries.extend(unstructured_block)
+    elif isinstance(unstructured_block, dict):
+        unstructured_entries.append(unstructured_block)
+    else:
+        # Legacy keys that contain chunks/unstructured
+        legacy_unstructured = [
+            value for key, value in tables_block.items()
+            if isinstance(value, dict) and ('chunk' in key.lower() or 'unstructured' in key.lower())
+        ]
+        if legacy_unstructured:
+            unstructured_entries.extend(legacy_unstructured)
+
+    structured_target = structured_target or 2
+    unstructured_target = unstructured_target or 1
+
+    def build_entries(entries, target, prefix, source_hint):
+        normalized = [
+            normalize_table_entry(entry, prefix, idx, source_hint, table_data_notes)
+            for idx, entry in enumerate(entries[:target])
+        ]
+        while len(normalized) < target:
+            normalized.append(
+                normalize_table_entry(None, prefix, len(normalized), source_hint, table_data_notes)
+            )
+        return normalized
+
+    structured_normalized = build_entries(structured_entries, structured_target, "STRUCTURED_TABLE", structured_sources)
+    unstructured_normalized = build_entries(unstructured_entries, unstructured_target, "UNSTRUCTURED_TABLE", unstructured_sources)
+
+    demo['tables'] = {
+        'structured': structured_normalized,
+        'unstructured': unstructured_normalized
+    }
+    demo['table_preferences'] = {
+        'structured_target': structured_target,
+        'unstructured_target': unstructured_target
+    }
+    return demo
+
+
 def get_segment_label(segment_value):
     return SEGMENT_LABELS.get(segment_value, segment_value.replace('_', ' ').title())
 
@@ -182,11 +281,24 @@ def clean_company_name(url):
     # Capitalize first letter
     return domain.capitalize()
 
-def generate_demo_ideas_with_llm(company_url, team_members, use_cases, segment, datasets):
+def generate_demo_ideas_with_llm(
+    company_url,
+    team_members,
+    use_cases,
+    segment,
+    datasets,
+    structured_table_count=None,
+    unstructured_table_count=None,
+    structured_sources=None,
+    unstructured_sources=None,
+    table_data_notes=None
+):
     """Generate 3 demo ideas using Snowflake Cortex LLM"""
     company_name = clean_company_name(company_url)
     segment_label = get_segment_label(segment)
-    
+    structured_target = structured_table_count or 2
+    unstructured_target = unstructured_table_count or 1
+
     # Clean URL for LLM prompt (remove trailing slash)
     clean_url = company_url.rstrip('/')
     
@@ -200,18 +312,25 @@ Customer Information:
 - Use Cases: {use_cases if use_cases else "Not specified"}
 - Industry Segment: {segment_label}
 - Typical Datasets/Sources: {datasets if datasets else "Not specified"}
+- Structured table count requested: {structured_target}
+- Unstructured table count requested: {unstructured_target}
+- Structured data sources (optional): {structured_sources if structured_sources else "Use best judgement"}
+- Unstructured content sources (optional): {unstructured_sources if unstructured_sources else "Use best judgement"}
+- Typical data signals / columns: {table_data_notes if table_data_notes else "Use best judgement"}
 
 For each demo, provide:
 1. A compelling title and description
-2. Two structured data tables (for Cortex Analyst) with realistic names and purposes
-3. One unstructured data table (for Cortex Search) with chunked text data
+2. A list of structured data tables (for Cortex Analyst) with realistic names and purposes
+3. A list of unstructured data tables (for Cortex Search) with chunked text data
 
 Requirements:
 - Make demos relevant to the company's likely industry/domain and the selected segment ({segment_label})
-- Incorporate or reference the provided datasets/sources ({datasets if datasets else "none specified"}) when naming tables and describing data
+- Incorporate or reference the provided datasets/sources when naming tables and describing data
 - Consider the audience when designing complexity
 - Focus on business value and real-world scenarios
 - Ensure table names are SQL-friendly (uppercase, underscores)
+- Structured table count must equal {structured_target}
+- Unstructured table count must equal {unstructured_target}
 
 Return ONLY a JSON object with this exact structure:
 {{
@@ -222,21 +341,24 @@ Return ONLY a JSON object with this exact structure:
       "industry_focus": "Primary industry or domain",
       "business_value": "Key business value proposition",
       "tables": {{
-        "structured_1": {{
-          "name": "TABLE_NAME_1",
-          "description": "What this table contains",
-          "purpose": "How Cortex Analyst will use this for analytics"
-        }},
-        "structured_2": {{
-          "name": "TABLE_NAME_2", 
-          "description": "What this table contains",
-          "purpose": "How Cortex Analyst will use this for analytics"
-        }},
-        "unstructured": {{
-          "name": "TABLE_NAME_CHUNKS",
-          "description": "What unstructured data this contains",
-          "purpose": "How Cortex Search will use this for semantic search"
-        }}
+        "structured": [
+          {{
+            "name": "TABLE_NAME",
+            "description": "What this table contains",
+            "purpose": "How Cortex Analyst will use this for analytics",
+            "source_hint": "System or feed this table mimics",
+            "data_focus": "Important columns, KPIs, or metrics"
+          }}
+        ],
+        "unstructured": [
+          {{
+            "name": "TABLE_NAME_CHUNKS",
+            "description": "What unstructured data this contains",
+            "purpose": "How Cortex Search will use this for semantic search",
+            "source_hint": "Document or knowledge system this reflects",
+            "data_focus": "Why these documents matter"
+          }}
+        ]
       }}
     }}
   ]
@@ -268,18 +390,59 @@ Return ONLY a JSON object with this exact structure:
                 demo['selected_segment'] = segment_label
                 if datasets:
                     demo['data_sources'] = f"Typical data sources: {datasets}"
+                apply_table_preferences_to_demo(
+                    demo,
+                    structured_target,
+                    unstructured_target,
+                    structured_sources,
+                    unstructured_sources,
+                    table_data_notes
+                )
             
             return demo_data['demos']
             
         except json.JSONDecodeError:
             st.warning("⚠️ LLM response wasn't valid JSON. Using fallback demo ideas.")
-            return get_fallback_demo_ideas(company_name, team_members, use_cases, segment, datasets)
+            return get_fallback_demo_ideas(
+                company_name,
+                team_members,
+                use_cases,
+                segment,
+                datasets,
+                structured_target,
+                unstructured_target,
+                structured_sources,
+                unstructured_sources,
+                table_data_notes
+            )
             
     except Exception as e:
         st.warning(f"⚠️ Error calling Cortex LLM: {str(e)}. Using fallback demo ideas.")
-        return get_fallback_demo_ideas(company_name, team_members, use_cases, segment, datasets)
+        return get_fallback_demo_ideas(
+            company_name,
+            team_members,
+            use_cases,
+            segment,
+            datasets,
+            structured_target,
+            unstructured_target,
+            structured_sources,
+            unstructured_sources,
+            table_data_notes
+        )
 
-def get_fallback_demo_ideas(company_name, team_members, use_cases, segment, datasets):
+def get_fallback_demo_ideas(
+    company_name,
+    team_members,
+    use_cases,
+    segment,
+    datasets,
+    structured_table_count=2,
+    unstructured_table_count=1,
+    structured_sources=None,
+    unstructured_sources=None,
+    table_data_notes=None
+):
     """Fallback demo ideas if LLM fails"""
     demo_templates = [
         {
@@ -289,21 +452,25 @@ def get_fallback_demo_ideas(company_name, team_members, use_cases, segment, data
             "industry_focus": "E-commerce/Retail",
             "business_value": "Optimize sales performance and customer experience",
             "tables": {
-                "structured_1": {
-                    "name": "SALES_TRANSACTIONS",
-                    "description": "Transaction-level sales data with customer, product, and revenue details",
-                    "purpose": "Enable Cortex Analyst to answer questions about sales performance, trends, and customer behavior"
-                },
-                "structured_2": {
-                    "name": "CUSTOMER_PROFILES",
-                    "description": "Customer demographic and behavioral data with segmentation",
-                    "purpose": "Support customer analytics and segmentation queries through Cortex Analyst"
-                },
-                "unstructured": {
-                    "name": "PRODUCT_REVIEWS_CHUNKS",
-                    "description": "Chunked customer reviews and feedback data",
-                    "purpose": "Enable Cortex Search for semantic search across customer feedback"
-                }
+                "structured": [
+                    {
+                        "name": "SALES_TRANSACTIONS",
+                        "description": "Transaction-level sales data with customer, product, and revenue details",
+                        "purpose": "Enable Cortex Analyst to answer questions about sales performance, trends, and customer behavior"
+                    },
+                    {
+                        "name": "CUSTOMER_PROFILES",
+                        "description": "Customer demographic and behavioral data with segmentation",
+                        "purpose": "Support customer analytics and segmentation queries through Cortex Analyst"
+                    }
+                ],
+                "unstructured": [
+                    {
+                        "name": "PRODUCT_REVIEWS_CHUNKS",
+                        "description": "Chunked customer reviews and feedback data",
+                        "purpose": "Enable Cortex Search for semantic search across customer feedback"
+                    }
+                ]
             }
         },
         {
@@ -313,21 +480,25 @@ def get_fallback_demo_ideas(company_name, team_members, use_cases, segment, data
             "industry_focus": "Financial Services",
             "business_value": "Enhance risk detection and regulatory compliance",
             "tables": {
-                "structured_1": {
-                    "name": "TRANSACTION_MONITORING",
-                    "description": "Financial transaction data with risk scores and flags",
-                    "purpose": "Enable Cortex Analyst for transaction pattern analysis and risk assessment"
-                },
-                "structured_2": {
-                    "name": "COMPLIANCE_EVENTS",
-                    "description": "Regulatory events, violations, and remediation tracking",
-                    "purpose": "Support compliance reporting and trend analysis through Cortex Analyst"
-                },
-                "unstructured": {
-                    "name": "REGULATORY_DOCS_CHUNKS",
-                    "description": "Chunked regulatory documents and policy text",
-                    "purpose": "Enable Cortex Search for policy and regulation lookup"
-                }
+                "structured": [
+                    {
+                        "name": "TRANSACTION_MONITORING",
+                        "description": "Financial transaction data with risk scores and flags",
+                        "purpose": "Enable Cortex Analyst for transaction pattern analysis and risk assessment"
+                    },
+                    {
+                        "name": "COMPLIANCE_EVENTS",
+                        "description": "Regulatory events, violations, and remediation tracking",
+                        "purpose": "Support compliance reporting and trend analysis through Cortex Analyst"
+                    }
+                ],
+                "unstructured": [
+                    {
+                        "name": "REGULATORY_DOCS_CHUNKS",
+                        "description": "Chunked regulatory documents and policy text",
+                        "purpose": "Enable Cortex Search for policy and regulation lookup"
+                    }
+                ]
             }
         },
         {
@@ -337,21 +508,25 @@ def get_fallback_demo_ideas(company_name, team_members, use_cases, segment, data
             "industry_focus": "Healthcare",
             "business_value": "Improve patient outcomes and clinical decision making",
             "tables": {
-                "structured_1": {
-                    "name": "PATIENT_OUTCOMES",
-                    "description": "Patient treatment outcomes and clinical metrics",
-                    "purpose": "Enable Cortex Analyst for clinical performance and outcome analysis"
-                },
-                "structured_2": {
-                    "name": "TREATMENT_PROTOCOLS",
-                    "description": "Standardized treatment protocols with effectiveness data",
-                    "purpose": "Support treatment analysis and protocol comparison through Cortex Analyst"
-                },
-                "unstructured": {
-                    "name": "CLINICAL_NOTES_CHUNKS",
-                    "description": "Chunked clinical notes and research documentation",
-                    "purpose": "Enable Cortex Search for clinical knowledge retrieval"
-                }
+                "structured": [
+                    {
+                        "name": "PATIENT_OUTCOMES",
+                        "description": "Patient treatment outcomes and clinical metrics",
+                        "purpose": "Enable Cortex Analyst for clinical performance and outcome analysis"
+                    },
+                    {
+                        "name": "TREATMENT_PROTOCOLS",
+                        "description": "Standardized treatment protocols with effectiveness data",
+                        "purpose": "Support treatment analysis and protocol comparison through Cortex Analyst"
+                    }
+                ],
+                "unstructured": [
+                    {
+                        "name": "CLINICAL_NOTES_CHUNKS",
+                        "description": "Chunked clinical notes and research documentation",
+                        "purpose": "Enable Cortex Search for clinical knowledge retrieval"
+                    }
+                ]
             }
         },
         {
@@ -361,21 +536,25 @@ def get_fallback_demo_ideas(company_name, team_members, use_cases, segment, data
             "industry_focus": "Manufacturing",
             "business_value": "Increase throughput, lower downtime, and optimize supplier delivery",
             "tables": {
-                "structured_1": {
-                    "name": "PRODUCTION_LINE_METRICS",
-                    "description": "Station-level OEE metrics, downtime reasons, and throughput readings",
-                    "purpose": "Let Cortex Analyst surface efficiency trends and bottlenecks across production lines"
-                },
-                "structured_2": {
-                    "name": "SUPPLIER_PERFORMANCE",
-                    "description": "Inbound delivery SLAs, quality checks, and compliance status by supplier",
-                    "purpose": "Correlate supply variability with plant KPIs to highlight high-risk vendors"
-                },
-                "unstructured": {
-                    "name": "QUALITY_REPORTS_CHUNKS",
-                    "description": "Chunked quality audits, maintenance logs, and operator shift notes",
-                    "purpose": "Use Cortex Search to retrieve tribal knowledge that explains anomalies"
-                }
+                "structured": [
+                    {
+                        "name": "PRODUCTION_LINE_METRICS",
+                        "description": "Station-level OEE metrics, downtime reasons, and throughput readings",
+                        "purpose": "Let Cortex Analyst surface efficiency trends and bottlenecks across production lines"
+                    },
+                    {
+                        "name": "SUPPLIER_PERFORMANCE",
+                        "description": "Inbound delivery SLAs, quality checks, and compliance status by supplier",
+                        "purpose": "Correlate supply variability with plant KPIs to highlight high-risk vendors"
+                    }
+                ],
+                "unstructured": [
+                    {
+                        "name": "QUALITY_REPORTS_CHUNKS",
+                        "description": "Chunked quality audits, maintenance logs, and operator shift notes",
+                        "purpose": "Use Cortex Search to retrieve tribal knowledge that explains anomalies"
+                    }
+                ]
             }
         }
     ]
@@ -389,6 +568,14 @@ def get_fallback_demo_ideas(company_name, team_members, use_cases, segment, data
         demo["selected_segment"] = get_segment_label(segment)
         if datasets:
             demo["data_sources"] = f"Typical data sources: {datasets}"
+        apply_table_preferences_to_demo(
+            demo,
+            structured_table_count,
+            unstructured_table_count,
+            structured_sources,
+            unstructured_sources,
+            table_data_notes
+        )
     
     cluster = SEGMENT_CLUSTER_MAP.get(segment, "generic")
     priority_order = SEGMENT_PRIORITY_MAP.get(cluster, SEGMENT_PRIORITY_MAP["generic"])
@@ -1546,85 +1733,117 @@ def create_tables_in_snowflake(schema_name, demo_data, num_records, company_name
         st.success(f"✅ Schema '{schema_name}' created successfully")
         
         results = []
-        structured_tables_data = {}
-        unstructured_table_info = None
-        # track outputs for optional pieces
+        structured_table_infos = []
+        unstructured_table_infos = []
         
-        # Generate unique ENTITY_ID values for each table with controlled overlap
-        # Create a base pool of unique IDs
-        base_entity_ids = list(range(1, num_records * 2 + 1))  # Create larger pool
-        random.shuffle(base_entity_ids)
+        tables_section = demo_data.get('tables', {}) or {}
+        structured_definitions = tables_section.get('structured') or []
+        unstructured_definitions = tables_section.get('unstructured') or []
         
-        # For first table: use first num_records unique values
-        table1_entity_ids = base_entity_ids[:num_records]
+        if isinstance(structured_definitions, dict):
+            structured_definitions = [structured_definitions]
+        if isinstance(unstructured_definitions, dict):
+            unstructured_definitions = [unstructured_definitions]
         
-        # For second table: overlap 70% with first table, 30% unique
-        overlap_size = int(num_records * 0.7)
-        table2_entity_ids = table1_entity_ids[:overlap_size] + base_entity_ids[num_records:num_records + (num_records - overlap_size)]
-        random.shuffle(table2_entity_ids)  # Shuffle to distribute the overlapping IDs
+        def build_entity_id_sets(table_count, records):
+            if table_count <= 0:
+                return []
+            base_pool = list(range(1, max(records * (table_count + 1), records * 2) + 1))
+            random.shuffle(base_pool)
+            cursor = 0
+            id_sets = []
+            prev_ids = None
+            for idx in range(table_count):
+                if prev_ids is None:
+                    ids = base_pool[cursor:cursor + records]
+                    cursor += records
+                else:
+                    overlap_size = max(1, int(records * 0.7)) if records > 1 else 1
+                    new_needed = max(0, records - overlap_size)
+                    if cursor + new_needed > len(base_pool):
+                        additional = list(range(len(base_pool) + 1, len(base_pool) + new_needed + records + 1))
+                        base_pool.extend(additional)
+                    new_ids = base_pool[cursor:cursor + new_needed]
+                    cursor += new_needed
+                    ids = prev_ids[:overlap_size] + new_ids
+                    random.shuffle(ids)
+                prev_ids = ids
+                id_sets.append(ids)
+            return id_sets
         
-        table_entity_ids = {
-            'structured_1': table1_entity_ids,
-            'structured_2': table2_entity_ids
-        }
+        structured_entity_ids = build_entity_id_sets(len(structured_definitions), num_records)
         
-        for table_key, table_info in demo_data['tables'].items():
+        # Generate structured tables
+        for idx, table_info in enumerate(structured_definitions):
             table_name = table_info['name']
             full_table_name = f"{schema_name}.{table_name}"
-            
             st.info(f"🤖 Generating realistic data for {table_name}...")
             
-            # Generate sample data using LLM for schema and content
-            if 'CHUNKS' in table_name or 'unstructured' in table_key:
-                # Use LLM to generate realistic unstructured content
-                with st.spinner(f"Generating {table_name} Data (Unstructured)"):
-                    sample_data = generate_unstructured_content_with_llm(table_info, num_records, company_name)
-                    unstructured_table_info = (table_name, table_info)
-            else:
-                # Use LLM to generate realistic structured data with unique join keys
-                entity_ids_for_table = table_entity_ids.get(table_key, table1_entity_ids)
-                with st.spinner(f"Generating {table_name} Data (Structured)"):
-                    sample_data = generate_realistic_content_with_llm(table_info, num_records, company_name, True, entity_ids_for_table)
-                    structured_tables_data[table_key] = (table_name, sample_data, table_info)
-
+            entity_ids_for_table = structured_entity_ids[idx] if idx < len(structured_entity_ids) else list(range(1, num_records + 1))
+            with st.spinner(f"Generating {table_name} Data (Structured)"):
+                sample_data = generate_realistic_content_with_llm(
+                    table_info,
+                    num_records,
+                    company_name,
+                    True,
+                    entity_ids_for_table
+                )
+            
             if sample_data:
-                # Create DataFrame
                 df = pd.DataFrame(sample_data)
-                
-                # Show sample of generated data
                 with st.expander(f"📋 Sample data for {table_name} (showing first 3 rows)"):
                     st.dataframe(df.head(3))
                 
-                # Create table with proper constraints for structured tables
-                if 'CHUNKS' not in table_name and 'unstructured' not in table_key:
-                    # This is a structured table - create with PRIMARY KEY constraint
-                    create_structured_table_with_constraints(full_table_name, df, schema_name, table_name)
-                else:
-                    # This is an unstructured table - create normally
-                    snow_df = session.create_dataframe(df)
-                    snow_df.write.mode("overwrite").save_as_table(full_table_name)
+                create_structured_table_with_constraints(full_table_name, df, schema_name, table_name)
                 
                 results.append({
                     'table': table_name,
                     'records': len(sample_data),
-                    'description': table_info['description'],
-                    'columns': list(df.columns)
+                    'description': table_info.get('description', ''),
+                    'columns': list(df.columns),
+                    'type': 'structured'
                 })
-                
+                structured_table_infos.append(table_info)
                 st.success(f"✅ Table '{table_name}' created with {len(sample_data):,} records and {len(df.columns)} columns")
         
+        # Generate unstructured tables
+        for table_info in unstructured_definitions:
+            table_name = table_info['name']
+            full_table_name = f"{schema_name}.{table_name}"
+            st.info(f"🤖 Generating realistic data for {table_name} (Unstructured)...")
+            with st.spinner(f"Generating {table_name} Data (Unstructured)"):
+                sample_data = generate_unstructured_content_with_llm(table_info, num_records, company_name)
+            
+            if sample_data:
+                df = pd.DataFrame(sample_data)
+                with st.expander(f"📋 Sample data for {table_name} (showing first 3 rows)"):
+                    st.dataframe(df.head(3))
+                
+                snow_df = session.create_dataframe(df)
+                snow_df.write.mode("overwrite").save_as_table(full_table_name)
+                
+                results.append({
+                    'table': table_name,
+                    'records': len(sample_data),
+                    'description': table_info.get('description', ''),
+                    'columns': list(df.columns),
+                    'type': 'unstructured'
+                })
+                unstructured_table_infos.append((table_name, table_info))
+                st.success(f"✅ Table '{table_name}' created with {len(sample_data):,} records")
+        
         # Confirm joinable tables
-        if len(structured_tables_data) >= 2:
+        if len(structured_table_infos) >= 2:
             st.success("✅ Structured tables created with unique ENTITY_ID join keys and 70% overlap for meaningful joins")
         
         # Optionally create semantic view
-        if enable_semantic_view and len(structured_tables_data) >= 2:
+        if enable_semantic_view and len(structured_table_infos) >= 2:
             st.info("📊 Creating semantic view...")
-            table_keys = list(structured_tables_data.keys())
-            table1_key, table2_key = table_keys[0], table_keys[1]
+            table1_info = structured_table_infos[0]
+            table2_info = structured_table_infos[1]
             
-            table1_name, table1_data, table1_info = structured_tables_data[table1_key]
-            table2_name, table2_data, table2_info = structured_tables_data[table2_key]
+            table1_name = table1_info['name']
+            table2_name = table2_info['name']
             
             semantic_view_info = create_semantic_view(
                 schema_name, table1_info, table2_info, demo_data, company_name
@@ -1642,20 +1861,19 @@ def create_tables_in_snowflake(schema_name, demo_data, num_records, company_name
                 })
         
         # Optionally create Cortex Search service
-        if enable_search_service and unstructured_table_info:
+        if enable_search_service and unstructured_table_infos:
             st.info("🔍 Creating Cortex Search service...")
-            table_name, table_info = unstructured_table_info
-            search_service = create_cortex_search_service(schema_name, table_name)
-            
-            if search_service:
-                search_service_name = search_service
-                results.append({
-                    'table': search_service,
-                    'records': 'Service',
-                    'description': f"Cortex Search service for {table_name}",
-                    'columns': ['Search service for semantic text search'],
-                    'type': 'search_service'
-                })
+            for table_name, _ in unstructured_table_infos:
+                search_service = create_cortex_search_service(schema_name, table_name)
+                
+                if search_service:
+                    results.append({
+                        'table': search_service,
+                        'records': 'Service',
+                        'description': f"Cortex Search service for {table_name}",
+                        'columns': ['Search service for semantic text search'],
+                        'type': 'search_service'
+                    })
 
         return results
         
@@ -1666,14 +1884,21 @@ def create_tables_in_snowflake(schema_name, demo_data, num_records, company_name
 def generate_data_story(company_name, demo_data, table_results):
     """Generate a concise, actionable demo guide"""
     # Separate different types of objects
-    regular_tables = [t for t in table_results if t.get('type') not in ['semantic_view', 'search_service']]
+    structured_tables = [t for t in table_results if t.get('type') == 'structured']
+    unstructured_tables = [t for t in table_results if t.get('type') == 'unstructured']
     semantic_views = [t for t in table_results if t.get('type') == 'semantic_view']
     search_services = [t for t in table_results if t.get('type') == 'search_service']
     
-    structured_tables = [t for t in regular_tables if not 'CHUNKS' in t['table']]
-    unstructured_tables = [t for t in regular_tables if 'CHUNKS' in t['table']]
+    total_records = sum(
+        t['records']
+        for t in structured_tables + unstructured_tables
+        if isinstance(t['records'], int)
+    )
     
-    total_records = sum(t['records'] for t in regular_tables if isinstance(t['records'], int))
+    structured_label = "Table" if len(structured_tables) == 1 else "Tables"
+    unstructured_label = "Table" if len(unstructured_tables) == 1 else "Tables"
+    semantic_label = "View" if len(semantic_views) == 1 else "Views"
+    search_label = "Service" if len(search_services) == 1 else "Services"
     
     # Get business focus from demo data
     industry_focus = demo_data.get('industry_focus', 'Business Intelligence')
@@ -1683,10 +1908,10 @@ def generate_data_story(company_name, demo_data, table_results):
 # 🎯 {company_name} Demo: {demo_data['title']}
 
 ## 📊 Data Generated
-- **{len(structured_tables)} Structured Tables** ({total_records:,} records) with ENTITY_ID PRIMARY KEY for joins
-- **{len(unstructured_tables)} Unstructured Table** (text chunks) for semantic search
-- **1 Semantic View** connecting all data with AI-ready relationships
-- **1 Cortex Search Service** for intelligent document retrieval
+- **{len(structured_tables)} Structured {structured_label}** ({total_records:,} records) with ENTITY_ID PRIMARY KEY for joins
+- **{len(unstructured_tables)} Unstructured {unstructured_label}** (text chunks) for semantic search
+- **{len(semantic_views)} Semantic {semantic_label}** connecting all data with AI-ready relationships
+- **{len(search_services)} Cortex Search {search_label}** for intelligent document retrieval
 
 **Tables Created:**
 """
@@ -1804,11 +2029,58 @@ with st.container():
     )
     st.info("Tip: Mention both transactional systems and document repositories for richer AI output.")
 
+with st.expander("Advanced Table Preferences (Optional)", expanded=False):
+    pref_col1, pref_col2 = st.columns(2)
+    with pref_col1:
+        structured_table_count = st.number_input(
+            "Structured Tables to Generate",
+            min_value=1,
+            max_value=5,
+            value=2,
+            step=1,
+            help="Default is 2. Increase to showcase more subject areas in a single demo."
+        )
+    with pref_col2:
+        unstructured_table_count = st.number_input(
+            "Unstructured Tables to Generate",
+            min_value=1,
+            max_value=3,
+            value=1,
+            step=1,
+            help="Default is 1. Increase if you need multiple document collections."
+        )
+    structured_table_sources = st.text_area(
+        "Structured Data Sources (Optional)",
+        placeholder="E.g., ERP transactions, CRM accounts, IoT telemetry, partner feeds",
+        help="Call out the upstream systems or files you want the structured tables to emulate."
+    )
+    unstructured_table_sources = st.text_area(
+        "Unstructured Content Sources (Optional)",
+        placeholder="E.g., QA logs, maintenance notes, knowledge articles, claims PDFs",
+        help="Describe the document or knowledge repositories the chunk table should mimic."
+    )
+    table_data_details = st.text_area(
+        "Typical Fields / Metrics to Emphasize (Optional)",
+        placeholder="E.g., OEE, SLA breaches, premium tiers, risk scores, symptom codes...",
+        help="List key columns, KPIs, or business signals that should show up in the generated tables."
+    )
+
 # Generate Ideas Button
 if st.button("🎨 Generate Demo Ideas", type="primary", disabled=not (company_url and team_members and segment)):
     if company_url and team_members:
         with st.spinner("🤖 Using Cortex LLM to generate tailored demo ideas..."):
-            st.session_state.demo_ideas = generate_demo_ideas_with_llm(company_url, team_members, use_cases, segment, typical_sources)
+            st.session_state.demo_ideas = generate_demo_ideas_with_llm(
+                company_url,
+                team_members,
+                use_cases,
+                segment,
+                typical_sources,
+                structured_table_count,
+                unstructured_table_count,
+                structured_table_sources,
+                unstructured_table_sources,
+                table_data_details
+            )
         st.success("✨ AI-generated demo ideas ready! Choose one below.")
         if hasattr(st, 'rerun'):
             st.rerun()
@@ -1847,27 +2119,39 @@ if st.session_state.demo_ideas:
             if 'data_sources' in demo:
                 st.info(f"🗂️ {demo['data_sources']}")
             
-            st.write("**📊 Data Tables:**")
-            
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                st.write("**Structured Table 1**")
-                st.write(f"🏷️ **{demo['tables']['structured_1']['name']}**")
-                st.caption(demo['tables']['structured_1']['description'])
-                st.caption(f"💡 {demo['tables']['structured_1']['purpose']}")
-            
-            with col2:
-                st.write("**Structured Table 2**")
-                st.write(f"🏷️ **{demo['tables']['structured_2']['name']}**")
-                st.caption(demo['tables']['structured_2']['description'])
-                st.caption(f"💡 {demo['tables']['structured_2']['purpose']}")
-            
-            with col3:
-                st.write("**Unstructured Table**")
-                st.write(f"🏷️ **{demo['tables']['unstructured']['name']}**")
-                st.caption(demo['tables']['unstructured']['description'])
-                st.caption(f"💡 {demo['tables']['unstructured']['purpose']}")
+            structured_tables = demo.get('tables', {}).get('structured', [])
+            unstructured_tables = demo.get('tables', {}).get('unstructured', [])
+
+            if structured_tables:
+                st.write("**📊 Structured Tables**")
+                for row_start in range(0, len(structured_tables), 2):
+                    row_tables = structured_tables[row_start:row_start + 2]
+                    row_cols = st.columns(len(row_tables))
+                    for col_idx, (col, table_def) in enumerate(zip(row_cols, row_tables)):
+                        with col:
+                            table_idx = row_start + col_idx + 1
+                            st.write(f"**Structured Table {table_idx}**")
+                            st.write(f"🏷️ **{table_def.get('name', 'STRUCTURED_TABLE')}**")
+                            st.caption(table_def.get('description', ''))
+                            if table_def.get('purpose'):
+                                st.caption(f"💡 {table_def['purpose']}")
+                            if table_def.get('source_hint'):
+                                st.caption(f"🗂️ Source: {table_def['source_hint']}")
+                            if table_def.get('data_focus'):
+                                st.caption(f"📌 Data focus: {table_def['data_focus']}")
+
+            if unstructured_tables:
+                st.write("**📝 Unstructured Tables**")
+                for idx, table_def in enumerate(unstructured_tables, 1):
+                    st.write(f"**Unstructured Table {idx}**")
+                    st.write(f"🏷️ **{table_def.get('name', 'UNSTRUCTURED_TABLE')}**")
+                    st.caption(table_def.get('description', ''))
+                    if table_def.get('purpose'):
+                        st.caption(f"💡 {table_def['purpose']}")
+                    if table_def.get('source_hint'):
+                        st.caption(f"🗂️ Source: {table_def['source_hint']}")
+                    if table_def.get('data_focus'):
+                        st.caption(f"📌 Data focus: {table_def['data_focus']}")
             
             # Select button for this demo
             if st.button(f"🚀 Select Demo {i+1}", key=f"select_demo_{i}"):
