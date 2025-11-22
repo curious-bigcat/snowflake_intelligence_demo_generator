@@ -65,122 +65,181 @@ SI_DEMOS (Database)
 
 ## Implementation Guide
 
-Follow this single, end-to-end path to bring the demo generator online, validate the Streamlit UI, and (optionally) publish it as a Native App for broader distribution.
+Use this provider-ready playbook to deploy, test, and release the SI Data Generator with the same rigor described in the Native App Provider Guide.
 
-### Step 0. Confirm prerequisites
-- Snowflake account on an edition that supports Cortex LLM, Cortex Analyst, Cortex Search, and Streamlit.  
-- Role with `ACCOUNTADMIN`-level powers (or equivalent) to create databases, warehouses, Git integrations, and Streamlit apps.  
-- Local workstation with `git`, [Snow CLI](https://docs.snowflake.com/en/developer-guide/snowflake-cli), and [SnowSQL](https://docs.snowflake.com/en/user-guide/snowsql) (all ≥ latest GA).
+### What This App Provides
+- **Intelligent Demo Generation** – AI-crafted scenarios powered by Cortex LLM.  
+- **Structured Tables** – Two ENTITY_ID-aware datasets with realistic measures/dimensions.  
+- **Unstructured Content** – Chunked documents that are ready for Cortex Search indexing.  
+- **Semantic Views & Search Services** – Optional assets to showcase Cortex Analyst and Cortex Search end-to-end.  
+- **Demo Storytelling** – Markdown summaries that capture value props, questions, and next steps.
 
-Recommended pre-checks (run once via SnowSQL or Snow CLI):
+### App Package Installation
+
+#### Prerequisites
+- Snowflake account (Enterprise+ or similar) with Cortex, Streamlit, and Native App dev enabled.  
+- `ACCOUNTADMIN` (or delegated) role for installation/testing.  
+- Latest `git`, [Snow CLI](https://docs.snowflake.com/en/developer-guide/snowflake-cli), and [SnowSQL](https://docs.snowflake.com/en/user-guide/snowsql).  
+- Network access for Snowflake Git integrations (if restricting egress).
+
+Run these once to prep the account and local tooling:
 ```
-snowsql -a <account> -u <user> -r ACCOUNTADMIN -q "ALTER ACCOUNT SET STREAMLIT_UI_ENABLED = TRUE;"
+snowsql -a <account> -u <user> -r ACCOUNTADMIN \
+  -q "ALTER ACCOUNT SET STREAMLIT_UI_ENABLED = TRUE;"
 snowsql -q "SHOW PACKAGES LIKE 'snowflake-cortex-*';"
-```
 
-Add a reusable SnowSQL connection profile so subsequent commands stay concise:
-```
 snowsql config add connection demo_admin \
   --accountname <account_locator> \
   --username <username> \
   --rolename ACCOUNTADMIN \
   --warehousename <warehouse>
-snowsql -c demo_admin -q "SELECT CURRENT_ROLE();"
+
+snow connection add demo_admin \
+  --account <account_locator> \
+  --user <username> \
+  --role ACCOUNTADMIN \
+  --warehouse <warehouse>
+snow connection test demo_admin
 ```
 
-### Step 1. Clone the repository, review configuration, and wire up Snow CLI
-```
+#### Quick Installation (Snow CLI)
+```bash
+# Clone and explore
 git clone https://github.com/<org>/SI_Data_Generator.git
 cd SI_Data_Generator
-```
-- Open `Setup.sql` to understand the objects that will be created (databases, warehouses, application roles, Git integration, Streamlit app definition).  
-- Inspect `native_app/app_config.yml`, `native_app/environment.yml`, and `native_app/Dashboard.py` if you plan to modify the Streamlit behavior before deployment.  
-- Note the optional packaging artifacts (`snowflake.yml`, `manifest.yml`, `native_app/app_config.yml`) that the script references.
-- Create a Snow CLI connection that mirrors the SnowSQL profile so all subsequent steps can run headless:
-  ```
-  snow connection add demo_admin \
-    --account <account_locator> \
-    --user <username> \
-    --role ACCOUNTADMIN \
-    --warehouse <warehouse>
-  snow connection test demo_admin
-  ```
 
-### Step 2. Create or update the Snowflake Git integration via Snow CLI
-The Streamlit app pulls its UI code from the Snowflake Git repository created in `SI_DEMOS.APPLICATIONS`. Run (adjust repo URL/branch as needed):
-```
-snow sql --connection demo_admin <<'SQL'
-USE ROLE ACCOUNTADMIN;
-CREATE OR REPLACE GIT REPOSITORY SI_DATA_GENERATOR_REPO
-  ORIGIN = 'https://github.com/<org>/SI_Data_Generator.git';
-ALTER GIT REPOSITORY SI_DATA_GENERATOR_REPO FETCH;
-SQL
-```
-If your governance model requires a network/security integration for Git, add it here with `snow sql --connection demo_admin -q "CREATE OR REPLACE SECURITY INTEGRATION ... TYPE = GIT ..."` and re-run the fetch.
-
-### Step 3. Execute `Setup.sql` using Snow CLI
-```
+# Hydrate the Snowflake objects (databases, schemas, app roles)
 snow sql --connection demo_admin -f Setup.sql
+
+# Ensure the bundled Git repository stays in sync
+snow sql --connection demo_admin -q "
+  USE ROLE ACCOUNTADMIN;
+  ALTER GIT REPOSITORY SI_DATA_GENERATOR_REPO FETCH;
+"
+
+# Build & deploy the Native App package defined in snowflake.yml
+snow app deploy --replace --connection demo_admin
+
+# Launch a provider-owned test instance
+snow app run --connection demo_admin
 ```
-The script performs the following automatically:
-- Creates `SI_DEMOS` (database), `APPLICATIONS` (schema), warehouses, stages, and service roles.  
-- Registers the Git repo and pins the Streamlit app to `native_app/Dashboard.py`.  
-- Grants the Streamlit app least-privilege access to warehouses and Cortex features.  
-- Seeds helper procedures (`SETUP_NATIVE_APP`, `CREATE_DEMO_SCHEMA`) and loads the packaged assets into `SI_DEMOS.APPLICATIONS`.
+`snowflake.yml` wires each artifact automatically: `manifest.yml`, `setup_script.sql`, `native_app/Dashboard.py`, and `native_app/environment.yml`.
 
-CLI output shows each block; expect a 2–4 minute run. Re-run the command anytime you need to refresh the environment—`Setup.sql` is idempotent.
+### Testing Your App Instance
 
-### Step 4. Discover and open the Streamlit experience from Snow CLI
-1. List apps to confirm registration:
-   ```
-   snow streamlit list --connection demo_admin \
-     --database SI_DEMOS --schema APPLICATIONS
-   ```
-   Copy the `app_url` (Snowsight link) from the output.
-2. Open the URL in your browser (or run `snow streamlit open SI_DEMOS.APPLICATIONS.SI_DATA_GENERATOR_APP --connection demo_admin` if your CLI version supports direct launch).  
-3. When the browser prompts for a warehouse, select the alias created in Step 3 (default: `SI_DEMOS_WH`) and accept any privilege dialogs.  
-4. The Streamlit UI always pulls the latest Git commit; rerun Step 2’s `ALTER ... FETCH` when you push new code.
+#### Deploy Test Instance
+After `snow app run`, copy the URL returned by Snow CLI (or open from Snowsight):
+```
+https://app.snowflake.com/<account>/#/apps/application/SI_DATA_GENERATOR_APP
+```
 
-### Step 5. Generate and validate your first demo
-1. On the Streamlit **Customer Brief** page (opened from Step 4), supply:
-   - Company URL (real or internal), audience, top use cases, and data sources.  
-   - Industry segment (Retail, Banking, etc.) and desired record count for structured tables.  
-   - Whether to include unstructured data, semantic views, or Cortex Search services.
-2. Click **Generate Demo Ideas**. Cortex will synthesize three industry-specific playbooks. Review the structured/unstructured table definitions, metrics, and recommended questions.  
-3. Select the scenario that best fits the engagement. Provide a schema name (ex: `ACME_DEMO_JAN2025`) or keep the suggested `[COMPANY]_DEMO_[DATE]`.  
-4. Press **Create Demo Infrastructure**. The app orchestrates warehouse usage, Snowpark data generation, semantic view registration, and (optionally) Cortex Search indexing.  
-5. Download or copy the generated “demo story” Markdown. To double-check objects via CLI:
-   ```
-   snow sql --connection demo_admin -q "
-     USE SCHEMA SI_DEMOS.ACME_DEMO_JAN2025;
-     SHOW TABLES;
-     SHOW VIEWS;
-   "
-   ```
-   You should see `TABLE_1`, `TABLE_2`, `CONTENT_CHUNKS`, optional semantic views, and search services for the target schema.
+#### Test Scenarios
+1. **Basic Flow** – Input company context and ensure a demo generates end-to-end.  
+2. **AI Integration** – Confirm Cortex LLM produces three differentiated scenarios.  
+3. **Data Creation** – Verify structured/unstructured tables, semantic views, and search services exist in the target schema.  
+4. **Permissions** – Swap warehouses/roles to ensure reference requests and privilege prompts behave correctly.
 
-### Step 6. (Optional) Package and distribute as a Native App
-1. Install Snow CLI (`pip install snowflake-cli-labs`) and authenticate with a key pair or OAuth.  
-2. Update `snowflake.yml` with your target account, role, and warehouse names (reuse connection `demo_admin` or create a provider-specific one).  
-3. Run:
-   ```
-   snow app run --connection demo_admin     # Builds, uploads, and tests the app package
-   snow app deploy --replace --connection demo_admin
-   ```
-4. Follow `NATIVE_APP_PROVIDER_GUIDE.md` to publish the package to consumers, ensuring the manifest references the assets generated in Step 3.  
-5. Grant `USAGE` and `OPERATE` on the consumer warehouse to the installed application role as part of your rollout checklist.
+#### Validation Checklist
+- Streamlit app loads without stack traces.  
+- Customer brief accepts inputs and persists session state.  
+- AI returns 3 industry-aligned ideas.  
+- Provisioning step creates schemas, ENTITY_ID primary keys, semantic view, and Cortex Search service when toggled.  
+- Generated Markdown “demo story” reflects the chosen scenario.  
+- Logs show Cortex calls, Git fetches, and Snowpark jobs succeeding.
 
-### Step 7. Share outputs and perform ongoing maintenance
-- Encourage sellers to attach the Markdown “demo story” to their opportunity notes or solution briefs.  
-- Use the cleanup SQL snippet below when a demo is no longer needed:
-  ```
-  snow sql --connection demo_admin -q "
-    USE ROLE ACCOUNTADMIN;
-    DROP SCHEMA IF EXISTS SI_DEMOS.ACME_DEMO_JAN2025 CASCADE;
-  "
-  ```
-- Schedule periodic `snow sql --connection demo_admin -q "ALTER GIT REPOSITORY SI_DATA_GENERATOR_REPO FETCH;"` (or rerun `Setup.sql`) to keep the Streamlit app synchronized with the latest commit.  
-- Monitor warehouse auto-suspend settings, Cortex usage limits, and app logs via Snowsight’s **Activity ➜ Logs** page to ensure predictable cost controls.
+### Releasing New Versions
+
+#### Version Management
+Update `manifest.yml` with semantic versions:
+```yaml
+version:
+  name: V1_1
+  label: "1.1"
+  comment: "Enhanced demo generation with new industry templates"
+```
+
+#### Release Process
+1. **Update Code** – Change `native_app/Dashboard.py`, data templates, or scripts.  
+2. **Test Locally** – `snow app deploy && snow app run` using `demo_admin`.  
+3. **Update Manifest** – Increment `version` metadata and note release highlights.  
+4. **Deploy Package** – `snow app deploy --connection demo_admin`.  
+5. **Create Version** – Promote the stage to a version and set it as default:
+   ```bash
+   snow app version create V1_1
+   snow app release-directive set --version V1_1 --default
+   snow app release-directive list
+   ```
+   One-liner: `snow app version create V1_1 --set-as-default`.
+
+#### Advanced Release Management
+Use `snow app version drop`, multiple stages, or rollback directives per the [Native Apps versioning guide](https://docs.snowflake.com/en/developer-guide/native-apps/versioning-apps).
+
+### Architecture Overview
+```
+SI Data Generator Native App
+├── APPLICATION ROLE: app_instance_role
+├── APPLICATIONS (schema)
+│   └── SI_DATA_GENERATOR_APP (Streamlit)
+├── CONFIG (schema)
+│   └── REGISTER_SINGLE_REFERENCE (callback procedure)
+└── Consumer warehouse reference
+    ├── USAGE
+    └── OPERATE
+```
+
+### Customization for Providers
+- **Demo templates** – Edit `get_fallback_demo_ideas` in `native_app/Dashboard.py` to inject vertical-specific storylines.  
+- **Warehouse sizing** – Adjust `references` within `manifest.yml` to enforce minimum warehouse classes.  
+- **Semantic/search toggles** – Default the Streamlit switches inside `Dashboard.py` to match your go-to-market narrative.  
+- **Setup automation** – Extend `setup_script.sql` if you need extra roles, stages, or masking policies.
+
+### Consumer Management
+```sql
+-- Consumer installs your shared/package app
+CREATE APPLICATION si_data_generator_app
+  FROM APPLICATION PACKAGE provider_account.si_data_generator_pkg;
+
+-- Grant warehouse access expected by the app
+GRANT USAGE, OPERATE ON WAREHOUSE consumer_warehouse
+  TO APPLICATION si_data_generator_app;
+```
+Cleanup commands:
+```sql
+DROP APPLICATION si_data_generator_app;
+DROP SCHEMA IF EXISTS demo_schema_name;
+```
+
+### Monitoring, Analytics, & Troubleshooting
+- **Provider analytics** – Track installs, active sessions, and errors via Native App telemetry views.  
+- **Performance tuning** – Watch Cortex usage, Snowpark job durations, and warehouse time via `ACCOUNT_USAGE`.  
+- **Deployment validation** – `snow app deploy --validate-only` for manifest checks, `snow app deploy --debug` for verbose logs.  
+- **Privilege issues** – Ensure `setup_script.sql` grants `USAGE/OPERATE` on warehouses and that consumers accept reference prompts.  
+- **Consumer errors** – Validate `manifest.yml` references and callback procedures; confirm Git fetch succeeds.
+
+### Success Indicators
+- Test instances deploy without errors and create all assets.  
+- Sellers can run end-to-end demos immediately after installation.  
+- Cleanup scripts drop schemas/app instances cleanly.  
+- Documentation (this README + provider guide) reflects the latest release.
+
+### Support Resources
+- `NATIVE_APP_PROVIDER_GUIDE.md` (detailed provider checklist)  
+- [Snowflake Native Apps docs](https://docs.snowflake.com/en/developer-guide/native-apps/)  
+- [Snow CLI reference](https://docs.snowflake.com/en/developer-guide/snowflake-cli/)  
+- [Cortex documentation](https://docs.snowflake.com/en/user-guide/snowflake-cortex)
+
+### Maintenance Cheatsheet
+```
+# Refresh Git repo without redeploying package
+snow sql --connection demo_admin -q "
+  ALTER GIT REPOSITORY SI_DATA_GENERATOR_REPO FETCH;
+"
+
+# Drop per-customer schemas from CLI
+snow sql --connection demo_admin -q "
+  DROP SCHEMA IF EXISTS SI_DEMOS.ACME_DEMO_JAN2025 CASCADE;
+"
+```
 
 ---
 
