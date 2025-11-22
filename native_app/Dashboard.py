@@ -110,15 +110,45 @@ except Exception:
     # Running outside of Native App context
     pass
 
-st.sidebar.title("📚 Helpful References")
-st.sidebar.markdown(
-    """
-- [Cortex Analyst Docs](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-analyst)
-- [Cortex Search Docs](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-search)
-- [Cortex Agents Docs](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents)
-- [Snowflake Intelligence Overview](https://docs.snowflake.com/en/user-guide/snowflake-cortex)
-"""
+st.sidebar.title("🧭 Interactive Guide")
+st.sidebar.caption("Use this mini playbook to understand what the app is doing behind the scenes.")
+
+guide_steps = {
+    "Briefing": "📋 **Briefing** — Capture customer context, desired personas, and key data sources. This powers the LLM prompts so every scenario feels bespoke.",
+    "Ideas": "🧠 **Scenario Ideas** — Cortex Sonnet drafts three end-to-end playbooks with structured/unstructured tables plus business value talking points.",
+    "Provisioning": "⚙️ **Provisioning** — Snowpark procedures spin up schemas, populate data, and optionally register semantic views + Cortex Search.",
+    "Story": "📣 **Demo Story** — The app writes a Markdown brief you can paste into call notes, Analyst Companion, or follow-up emails."
+}
+
+selected_stage = st.sidebar.radio(
+    "Where are you in the flow?",
+    list(guide_steps.keys()),
+    help="Pick a stage to reveal guidance tailored to that part of the workflow."
 )
+st.sidebar.markdown(guide_steps[selected_stage])
+
+st.sidebar.success("Tip: Re-run the flow after editing inputs to instantly generate a fresh set of AI-crafted demos.")
+
+with st.sidebar.expander("🔍 What this app automates"):
+    st.markdown(
+        """
+        - Creates two **join-ready structured tables** complete with ENTITY_ID primary keys  
+        - Builds an **unstructured chunks table** primed for Cortex Search indexing  
+        - Optionally registers a **semantic view** so Cortex Analyst understands business context  
+        - Publishes a **demo story** explaining value, sample questions, and search prompts
+        """
+    )
+
+with st.sidebar.expander("💡 Power-user moves"):
+    st.markdown(
+        """
+        - Override the schema name to align with your account hygiene  
+        - Toggle semantic view or search service to match the narrative you want to tell  
+        - Download the Markdown story and drop it straight into Salesforce notes or Teams chats
+        """
+    )
+
+st.sidebar.info("Need fresh data? Delete a schema in **SI_DEMOS** and rerun provisioning—everything is idempotent.")
 
 st.image(
     "https://www.google.com/url?sa=i&url=https%3A%2F%2Fwww.linkedin.com%2Fpulse%2Fsnowflake-company-everyone-should-talking-its-ipo-chhabria-he-him-&psig=AOvVaw2vbIcMUic9pbA9N4MdvdC4&ust=1763833674400000&source=images&cd=vfe&opi=89978449&ved=0CBUQjRxqFwoTCPDwhdHmg5EDFQAAAAAdAAAAABAE",
