@@ -150,12 +150,6 @@ with st.sidebar.expander("💡 Power-user moves"):
 
 st.sidebar.info("Need fresh data? Delete a schema in **SI_DEMOS** and rerun provisioning—everything is idempotent.")
 
-st.image(
-    "https://www.google.com/url?sa=i&url=https%3A%2F%2Fwww.linkedin.com%2Fpulse%2Fsnowflake-company-everyone-should-talking-its-ipo-chhabria-he-him-&psig=AOvVaw2vbIcMUic9pbA9N4MdvdC4&ust=1763833674400000&source=images&cd=vfe&opi=89978449&ved=0CBUQjRxqFwoTCPDwhdHmg5EDFQAAAAAdAAAAABAE",
-    caption="Snowflake Intelligence Demo Builder",
-    use_column_width=True,
-)
-
 with st.container():
     st.title("❄️ Snowflake Intelligence Demo Builder")
     st.markdown(
