@@ -16,6 +16,13 @@ Build complete Snowflake Intelligence demos—structured data, unstructured cont
 | Supported industries | Manufacturing, Automotive, Banking, Insurance, Securities, Asset Manager, Retail, CPG, Pharma, Healthcare, Generic |
 | Tech stack | Python, Streamlit, Snowflake Snowpark, Cortex APIs |
 
+## 🔖 Tags & Keywords
+
+- Snowflake Intelligence Demo - Vehicle Manufacturing  
+- Snowflake Intelligence Manufacturing Automotive  
+- Comprehensive demonstration of Snowflake Intelligence capabilities for Vehicle Manufacturing  
+- License Snowflake Python
+
 ---
 
 ## 📚 Table of Contents
